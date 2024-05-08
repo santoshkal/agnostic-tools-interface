@@ -34,9 +34,9 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("Document apps indesected: %#v\n", resp.IndexUID)
+	fmt.Printf("Document apps Added: %#v\n", resp.Status)
 
-	fa := []string{"name", "description"}
+	fa := []string{"type", "description"}
 	client.Index("apps").UpdateFilterableAttributes(&fa)
 
 	i, err := client.GetIndex("apps")
@@ -49,7 +49,7 @@ func main() {
 		fmt.Printf("Error fetching filterable attributes: %v", err)
 	}
 
-	s, err := client.Index("apps").Search("deployments", &meilisearch.SearchRequest{
+	s, err := client.Index("apps").Search("DeploymentList", &meilisearch.SearchRequest{
 		AttributesToRetrieve: []string{"name", "description"},
 		// 	// Filter: [][]string{
 		// 	// 	{"name = \"limit\""},
