@@ -3,72 +3,126 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-
-	"github.com/meilisearch/meilisearch-go"
+	"os"
+	"strings"
 )
 
-// Wrapper struct around SearchResult
-type SearchResultWrapper struct {
-	Result *meilisearch.SearchResponse
+type Property struct {
+	SchemaName   string `json:"schema"`
+	PropertyName string `json:"property"`
+	Type         string `json:"type"`
+	Description  string `json:"description"`
 }
 
 func main() {
-	client := meilisearch.NewClient(meilisearch.ClientConfig{
-		Host:   "http://localhost:7700",
-		APIKey: "aSampleMasterKey",
-	})
-
-	// Add Schema to DB
-
-	// jsonFile, _ := os.Open("apps.json")
-	// defer jsonFile.Close()
-
-	// // byteValue, _ := io.ReadAll(jsonFile)
-	// var appMap map[string]interface{}
-	// err := json.NewDecoder(jsonFile).Decode(&appMap)
-	// if err != nil {
-	// 	fmt.Println("Error decoding JSON:", err)
-	// 	return
-	// }
-
-	// apps := []map[string]interface{}{appMap}
-
-	// resp, err := client.Index("apps").AddDocuments(apps)
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// fmt.Printf("Document apps Added: %#v\n", resp.Status)
-	// fmt.Printf("Document apps Added: %#v\n", resp.TaskUID)
-	// fmt.Printf("Document apps Added: %#v\n", resp.IndexUID)
-	// fmt.Printf("Document apps Added: %#v\n", resp.Type)
-
-	s, err := client.Index("apps").Search("", &meilisearch.SearchRequest{
-		HitsPerPage: 100,
-		Page:        1,
-		// AttributesToRetrieve: []string{"type", "description"},
-		AttributesToRetrieve: []string{"components.schemas.io.k8s.api.apps.v1.*.type",
-			"components.schemas.io.k8s.api.apps.v1.*.description"},
-		// Filter: [][]string{
-		// 	[]string{"name = \"limit\""},
-		// 	[]string{"description: limit is a maximum number of responses to return for a list call"},
-		// },
-	})
+	// Read JSON data from file
+	sb, err := os.ReadFile("./apps1.json")
 	if err != nil {
-		fmt.Printf("Failed to search: %v", err)
-	}
-	// Wrap the SearchResult
-	wrappedResult := SearchResultWrapper{Result: s}
-	jsonData, err := json.MarshalIndent(wrappedResult, "", "    ")
-	if err != nil {
-		fmt.Printf("Error marshaling JSON: %v", err)
+		fmt.Printf("Error reading file: %v\n", err)
 		return
 	}
+
+	// Define map to unmarshal JSON data into
+	var OpenApiSchema map[string]interface{}
+
+	// Unmarshal JSON data into map
+	err = json.Unmarshal(sb, &OpenApiSchema)
 	if err != nil {
-		fmt.Printf("Failed to marshal %v search results: %v", jsonData, err)
+		fmt.Println("Error unmarshalling JSON:", err)
+		return
 	}
-	fmt.Println(s.Hits)
-	fmt.Printf("Search results: %v\n", s.Hits)
 
-	fmt.Printf("Search Results in JSON: %v\n", string(jsonData))
+	// Access the schemas map
+	schemasMap, ok := OpenApiSchema["components"].(map[string]interface{})["schemas"].(map[string]interface{})
+	if !ok {
+		fmt.Println("Error: Unable to access schemas map")
+		return
+	}
 
+	// Create a slice to hold the properties
+	var properties []Property
+
+	// Iterate over the schemas
+	for schemaName, schema := range schemasMap {
+		// Access the schema map
+		schemaMap, ok := schema.(map[string]interface{})
+		if !ok {
+			fmt.Println("Error: Unable to assert schema to map[string]interface{}")
+			continue
+		}
+
+		// Process properties
+		processProperties(schemaName, schemaMap, &properties, OpenApiSchema)
+	}
+
+	// Marshal properties into JSON
+	jsonData, err := json.MarshalIndent(properties, "", "  ")
+	if err != nil {
+		fmt.Println("Error marshalling properties to JSON:", err)
+		return
+	}
+
+	// Print JSON data
+	fmt.Println(string(jsonData))
+}
+
+// Function to process properties
+func processProperties(schemaName string, schemaMap map[string]interface{}, properties *[]Property, OpenApiSchema map[string]interface{}) {
+	// Access the properties map within the schema
+	propertiesMap, ok := schemaMap["properties"].(map[string]interface{})
+	if !ok {
+		fmt.Printf("Error: Unable to access properties map %v\n", schemaMap["properties"])
+		return
+	}
+
+	// Iterate over the properties
+	for propName, prop := range propertiesMap {
+		// Access the property map
+		propMap, ok := prop.(map[string]interface{})
+		if !ok {
+			fmt.Println("Error: Unable to assert property to map[string]interface{}")
+			continue
+		}
+
+		// Create a Property object
+		property := Property{
+			SchemaName:   schemaName,
+			PropertyName: propName,
+			Type:         fmt.Sprintf("%v", propMap["type"]),
+			Description:  fmt.Sprintf("%v", propMap["description"]),
+		}
+
+		// If type is not defined and $ref is present, follow the reference
+		if property.Type == "" {
+			ref, ok := propMap["$ref"].(string)
+			if ok {
+				// Follow the reference
+				processReference(schemaName, ref, properties, OpenApiSchema)
+			}
+		}
+
+		// Append property to properties slice
+		*properties = append(*properties, property)
+	}
+}
+
+// Function to process reference
+func processReference(schemaName string, ref string, properties *[]Property, OpenApiSchema map[string]interface{}) {
+	// Extract the path from the reference
+	refParts := strings.Split(ref, "/")
+	if len(refParts) < 3 {
+		fmt.Println("Error: Invalid reference format")
+		return
+	}
+	path := refParts[2]
+
+	// Access the referenced schema
+	refSchema, ok := OpenApiSchema[path].(map[string]interface{})
+	if !ok {
+		fmt.Println("Error: Unable to access referenced schema")
+		return
+	}
+
+	// Process properties of the referenced schema
+	processProperties(path, refSchema, properties, OpenApiSchema)
 }
