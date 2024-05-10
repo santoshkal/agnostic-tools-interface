@@ -1,10 +1,16 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/meilisearch/meilisearch-go"
 )
+
+// Wrapper struct around SearchResult
+type SearchResultWrapper struct {
+	Result *meilisearch.SearchResponse
+}
 
 func main() {
 	client := meilisearch.NewClient(meilisearch.ClientConfig{
@@ -12,20 +18,14 @@ func main() {
 		APIKey: "aSampleMasterKey",
 	})
 
-	_, err := client.CreateIndex(&meilisearch.IndexConfig{
-		Uid:        "apps",
-		PrimaryKey: "id",
-	})
-	if err != nil {
-		fmt.Printf("Failed to create index: %v", err)
-	}
+	// Add Schema to DB
 
 	// jsonFile, _ := os.Open("apps.json")
 	// defer jsonFile.Close()
 
 	// // byteValue, _ := io.ReadAll(jsonFile)
 	// var appMap map[string]interface{}
-	// err = json.NewDecoder(jsonFile).Decode(&appMap)
+	// err := json.NewDecoder(jsonFile).Decode(&appMap)
 	// if err != nil {
 	// 	fmt.Println("Error decoding JSON:", err)
 	// 	return
@@ -42,21 +42,12 @@ func main() {
 	// fmt.Printf("Document apps Added: %#v\n", resp.IndexUID)
 	// fmt.Printf("Document apps Added: %#v\n", resp.Type)
 
-	fa := []string{"type", "description"}
-	client.Index("apps").UpdateFilterableAttributes(&fa)
-
-	// i, err := client.GetStats("apps")
-	// if err != nil {
-	// 	fmt.Printf("Failed to get Index: %v", err)
-	// }
-
-	f, err := client.Index("apps").GetFilterableAttributes()
-	if err != nil {
-		fmt.Printf("Error fetching filterable attributes: %v", err)
-	}
-
-	s, err := client.Index("apps").Search("DeploymentList", &meilisearch.SearchRequest{
-		AttributesToRetrieve: []string{"type", "description"},
+	s, err := client.Index("apps").Search("", &meilisearch.SearchRequest{
+		HitsPerPage: 100,
+		Page:        1,
+		// AttributesToRetrieve: []string{"type", "description"},
+		AttributesToRetrieve: []string{"components.schemas.io.k8s.api.apps.v1.*.type",
+			"components.schemas.io.k8s.api.apps.v1.*.description"},
 		// Filter: [][]string{
 		// 	[]string{"name = \"limit\""},
 		// 	[]string{"description: limit is a maximum number of responses to return for a list call"},
@@ -65,14 +56,19 @@ func main() {
 	if err != nil {
 		fmt.Printf("Failed to search: %v", err)
 	}
-	// t, err := client.GetTask(3)
-	// if err != nil {
-	// 	fmt.Printf("Failed to get task: %v", err)
-	// }
-	// fmt.Printf("Found Index: %v\n", i.UID)
-	fmt.Printf("Found Search: %v\n", s.Hits)
+	// Wrap the SearchResult
+	wrappedResult := SearchResultWrapper{Result: s}
+	jsonData, err := json.MarshalIndent(wrappedResult, "", "    ")
+	if err != nil {
+		fmt.Printf("Error marshaling JSON: %v", err)
+		return
+	}
+	if err != nil {
+		fmt.Printf("Failed to marshal %v search results: %v", jsonData, err)
+	}
+	fmt.Println(s.Hits)
+	fmt.Printf("Search results: %v\n", s.Hits)
 
-	fmt.Printf("Found Attributes: %v\n", f)
-	// fmt.Printf("Found Items: %v\n", a.IndexUID)
+	fmt.Printf("Search Results in JSON: %v\n", string(jsonData))
 
 }

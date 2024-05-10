@@ -1,0 +1,15 @@
+[map[]]
+Search results: [map[]]
+Search Results in JSON: {
+    "Result": {
+        "hits": [
+            {}
+        ],
+        "processingTimeMs": 18,
+        "query": "",
+        "totalHits": 1,
+        "hitsPerPage": 100,
+        "page": 1,
+        "totalPages": 1
+    }
+}
